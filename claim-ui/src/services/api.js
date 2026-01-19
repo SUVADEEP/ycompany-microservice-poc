@@ -27,5 +27,10 @@ export const workflowService = {
     api.post(`/workflow/claims/${claimId}/assign?supervisorId=${supervisorId}`),
 }
 
+export const policyService = {
+  generatePolicyNumber: (customerId) => api.get(`/policies/generate?customerId=${customerId}`),
+  checkPolicyNumber: (policyNumber) => api.get(`/policies/check?policyNumber=${policyNumber}`),
+}
+
 export default api
 

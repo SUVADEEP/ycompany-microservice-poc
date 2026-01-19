@@ -22,13 +22,14 @@ import {
   Chip,
   Grid,
 } from '@mui/material'
-import { Add, Visibility } from '@mui/icons-material'
-import { claimService } from '../services/api'
+import { Add, Visibility, Refresh } from '@mui/icons-material'
+import { claimService, policyService } from '../services/api'
 
 function CustomerView() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
+  const [generatingPolicy, setGeneratingPolicy] = useState(false)
   const [formData, setFormData] = useState({
     customerId: 'CUST001',
     policyNumber: '',
@@ -38,29 +39,65 @@ function CustomerView() {
     documentUrls: [],
   })
 
-  const { data: claims = [], isLoading } = useQuery(
+  const { data: allClaims = [], isLoading, refetch } = useQuery(
     'customerClaims',
     () => claimService.getClaimsByCustomer('CUST001').then(res => res.data),
     { refetchInterval: 5000 }
   )
 
+  // Sort claims by creation date (newest first)
+  const claims = [...allClaims].sort((a, b) => {
+    const dateA = new Date(a.createdAt || 0)
+    const dateB = new Date(b.createdAt || 0)
+    return dateB - dateA
+  })
+
   const createMutation = useMutation(
     (data) => claimService.createClaim(data),
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries('customerClaims')
-        setOpen(false)
-        setFormData({
-          customerId: 'CUST001',
-          policyNumber: '',
-          claimType: '',
-          description: '',
-          claimAmount: '',
-          documentUrls: [],
-        })
+      onSuccess: async () => {
+        // Immediately refetch to show the new claim
+        await queryClient.invalidateQueries('customerClaims')
+        await refetch()
+        handleCloseDialog()
       },
     }
   )
+
+  const handleOpenDialog = async () => {
+    setOpen(true)
+    // Generate policy number when dialog opens
+    await generatePolicyNumber()
+  }
+
+  const generatePolicyNumber = async () => {
+    setGeneratingPolicy(true)
+    try {
+      const response = await policyService.generatePolicyNumber('CUST001')
+      setFormData(prev => ({
+        ...prev,
+        policyNumber: response.data.policyNumber
+      }))
+    } catch (error) {
+      console.error('Failed to generate policy number:', error)
+      // If generation fails, user can still enter manually
+    } finally {
+      setGeneratingPolicy(false)
+    }
+  }
+
+  const handleCloseDialog = () => {
+    setOpen(false)
+    // Reset form when closing
+    setFormData({
+      customerId: 'CUST001',
+      policyNumber: '',
+      claimType: '',
+      description: '',
+      claimAmount: '',
+      documentUrls: [],
+    })
+  }
 
   const handleSubmit = (e) => {
     e.preventDefault()
@@ -86,7 +123,7 @@ function CustomerView() {
         <Button
           variant="contained"
           startIcon={<Add />}
-          onClick={() => setOpen(true)}
+          onClick={handleOpenDialog}
         >
           Raise New Claim
         </Button>
@@ -137,21 +174,38 @@ function CustomerView() {
         </Table>
       </TableContainer>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={open} onClose={handleCloseDialog} maxWidth="md" fullWidth>
         <form onSubmit={handleSubmit}>
           <DialogTitle>Raise New Claim</DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Policy Number"
-                  value={formData.policyNumber}
-                  onChange={(e) =>
-                    setFormData({ ...formData, policyNumber: e.target.value })
-                  }
-                  required
-                />
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <TextField
+                    fullWidth
+                    label="Policy Number"
+                    value={formData.policyNumber}
+                    onChange={(e) =>
+                      setFormData({ ...formData, policyNumber: e.target.value })
+                    }
+                    required
+                    disabled={generatingPolicy}
+                    helperText={generatingPolicy ? 'Generating unique policy number...' : 'Auto-generated unique policy number'}
+                    InputProps={{
+                      readOnly: true,
+                    }}
+                  />
+                  <Button
+                    variant="outlined"
+                    startIcon={<Refresh />}
+                    onClick={generatePolicyNumber}
+                    disabled={generatingPolicy}
+                    sx={{ mt: 1 }}
+                    size="small"
+                  >
+                    Regenerate
+                  </Button>
+                </Box>
               </Grid>
               <Grid item xs={12}>
                 <TextField
@@ -192,8 +246,12 @@ function CustomerView() {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button type="submit" variant="contained" disabled={createMutation.isLoading}>
+            <Button onClick={handleCloseDialog}>Cancel</Button>
+            <Button 
+              type="submit" 
+              variant="contained" 
+              disabled={createMutation.isLoading || generatingPolicy || !formData.policyNumber}
+            >
               Submit Claim
             </Button>
           </DialogActions>
