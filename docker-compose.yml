@@ -1,0 +1,150 @@
+services:
+  # Infrastructure Services
+  postgresql:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker-init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - ycompany-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  temporal:
+    image: temporalio/auto-setup:1.29.2
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12_pgx
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=postgres
+      - POSTGRES_SEEDS=postgresql
+    volumes:
+      - temporal-data:/var/lib/temporal
+    networks:
+      - ycompany-network
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 7233 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  temporal-ui:
+    image: temporalio/ui:2.31.0
+    ports:
+      - "8088:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    networks:
+      - ycompany-network
+    depends_on:
+      - temporal
+
+  # Application Services
+  claim-service:
+    build:
+      context: .
+      dockerfile: claim-service/Dockerfile
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgresql:5432/claimdb
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+      - TEMPORAL_SERVER_ADDRESS=temporal:7233
+    networks:
+      - ycompany-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  workflow-manager-service:
+    build:
+      context: .
+      dockerfile: workflow-manager-service/Dockerfile
+    ports:
+      - "8082:8082"
+    depends_on:
+      claim-service:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - CLAIM_SERVICE_URL=http://claim-service:8081
+      - TEMPORAL_SERVER_ADDRESS=temporal:7233
+    networks:
+      - ycompany-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8080:8080"
+    depends_on:
+      claim-service:
+        condition: service_healthy
+      workflow-manager-service:
+        condition: service_healthy
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - ycompany-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  claim-ui:
+    build:
+      context: ./claim-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080
+    networks:
+      - ycompany-network
+
+volumes:
+  temporal-data:
+  postgres-data:
+
+networks:
+  ycompany-network:
+    driver: bridge

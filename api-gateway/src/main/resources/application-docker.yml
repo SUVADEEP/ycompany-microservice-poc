@@ -1,0 +1,42 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: claim-service
+          uri: http://claim-service:8081
+          predicates:
+            - Path=/api/claims/**
+          filters:
+            - StripPrefix=1
+        - id: workflow-manager-service
+          uri: http://workflow-manager-service:8082
+          predicates:
+            - Path=/api/workflow/**
+          filters:
+            - StripPrefix=1
+        - id: claim-ui
+          uri: http://claim-ui:3000
+          predicates:
+            - Path=/ui/**
+          filters:
+            - RewritePath=/ui/(?<segment>.*), /$\{segment}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    org.springframework.web: INFO
+

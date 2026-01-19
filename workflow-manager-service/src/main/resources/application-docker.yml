@@ -1,0 +1,30 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: workflow-manager-service
+
+claim:
+  service:
+    url: ${CLAIM_SERVICE_URL:http://claim-service:8081}
+
+temporal:
+  server:
+    address: ${TEMPORAL_SERVER_ADDRESS:localhost:7233}
+  task-queue: claim-processing
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.ycompany: INFO
+    org.springframework.web: INFO
+
