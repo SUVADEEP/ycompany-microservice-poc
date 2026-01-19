@@ -6,6 +6,8 @@ import com.ycompany.claim.repository.ClaimRepository;
 import com.ycompany.claim.repository.CommentRepository;
 import com.ycompany.common.dto.ClaimDTO;
 import com.ycompany.common.dto.CommentDTO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,8 @@ import java.util.stream.Collectors;
 @Service
 public class ClaimService {
     
+    private static final Logger logger = LoggerFactory.getLogger(ClaimService.class);
+    
     @Autowired
     private ClaimRepository claimRepository;
     
@@ -24,12 +28,23 @@ public class ClaimService {
     
     @Autowired
     private TemporalWorkflowService temporalWorkflowService;
+    
+    @Autowired
+    private PolicyService policyService;
 
     @Transactional
     public ClaimDTO createClaim(ClaimDTO claimDTO) {
         Claim claim = new Claim();
         claim.setCustomerId(claimDTO.getCustomerId());
-        claim.setPolicyNumber(claimDTO.getPolicyNumber());
+        
+        // Auto-generate policy number if not provided
+        String policyNumber = claimDTO.getPolicyNumber();
+        if (policyNumber == null || policyNumber.trim().isEmpty()) {
+            policyNumber = policyService.generateUniquePolicyNumber(claimDTO.getCustomerId());
+            logger.info("Auto-generated policy number: {} for customer: {}", policyNumber, claimDTO.getCustomerId());
+        }
+        claim.setPolicyNumber(policyNumber);
+        
         claim.setClaimType(claimDTO.getClaimType());
         claim.setDescription(claimDTO.getDescription());
         claim.setClaimAmount(claimDTO.getClaimAmount());
@@ -40,8 +55,16 @@ public class ClaimService {
         
         Claim savedClaim = claimRepository.save(claim);
         
-        // Initiate Temporal workflow
-        temporalWorkflowService.startClaimWorkflow(savedClaim.getId());
+        // Initiate Temporal workflow - wrap in try-catch to prevent transaction rollback
+        // if Temporal is unavailable, the claim should still be saved
+        try {
+            temporalWorkflowService.startClaimWorkflow(savedClaim.getId());
+            logger.info("Successfully started Temporal workflow for claim {}", savedClaim.getId());
+        } catch (Exception e) {
+            // Log the error but don't fail the claim creation
+            // The claim is already saved, so we just log the Temporal workflow failure
+            logger.error("Failed to start Temporal workflow for claim {}: {}", savedClaim.getId(), e.getMessage(), e);
+        }
         
         return convertToDTO(savedClaim);
     }

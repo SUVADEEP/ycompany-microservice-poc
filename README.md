@@ -267,3 +267,5 @@ View logs:
 docker-compose -f docker-compose.local.yml logs -f
 View logs for a specific service:
 docker-compose -f docker-compose.local.yml logs -f temporal
+
+docker-compose -f docker-compose.local.yml up -d claim-ui

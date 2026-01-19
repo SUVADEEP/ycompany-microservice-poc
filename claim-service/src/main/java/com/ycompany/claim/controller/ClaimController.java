@@ -62,7 +62,7 @@ public class ClaimController {
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<ClaimDTO> updateStatus(@PathVariable Long id, @RequestParam String status) {
+    public ResponseEntity<ClaimDTO> updateStatus(@PathVariable Long id, @RequestParam("status") String status) {
         ClaimDTO updatedClaim = claimService.updateClaimStatus(id, status);
         return ResponseEntity.ok(updatedClaim);
     }

@@ -13,6 +13,12 @@ spring:
             - Path=/api/claims/**
           filters:
             - StripPrefix=1
+        - id: policy-service
+          uri: http://localhost:8081
+          predicates:
+            - Path=/api/policies/**
+          filters:
+            - StripPrefix=1
         - id: workflow-manager-service
           uri: http://localhost:8082
           predicates:

@@ -5,21 +5,18 @@ spring:
   application:
     name: claim-service
   datasource:
-    url: jdbc:h2:mem:claimdb
-    driver-class-name: org.h2.Driver
-    username: sa
-    password: 
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
+    url: jdbc:postgresql://localhost:5432/claimdb
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: postgres
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
 
 temporal:
   server:
@@ -39,4 +36,6 @@ logging:
   level:
     com.ycompany: DEBUG
     org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN
 
